@@ -184,7 +184,7 @@ class _LivePlayPageState extends State<LivePlayPage> {
     return Hero(
       tag: widget.room.roomId,
       child: AspectRatio(
-        aspectRatio: 16 / 9,
+        aspectRatio: 19.5 / 9,
         child: Container(
           color: Colors.black,
           child: controller == null
@@ -207,7 +207,7 @@ class _LivePlayPageState extends State<LivePlayPage> {
                   key: _playerKey,
                   controller: controller!,
                   width: width,
-                  height: width / 16.0 * 9.0,
+                  height: width / 19.5 * 9.0,
                 ),
         ),
       ),
