@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:pure_live/common/index.dart';
 
 class PlatformRooms {
@@ -16,58 +18,48 @@ class PlatformRooms {
 class PopularProvider with ChangeNotifier {
   final BuildContext context;
 
-  int get platformIndex =>
-      platformRooms.keys.toList().indexWhere((e) => e == platform);
-  String platform = 'bilibili';
+  PopularProvider(this.context) {
+    final platform =
+        Provider.of<SettingsProvider>(context, listen: false).preferPlatform;
+    preferIndex =
+        max(0, platformRooms.keys.toList().indexWhere((e) => e == platform));
+    initRefresh();
+  }
+
+  late final int preferIndex;
   Map<String, PlatformRooms> platformRooms = {
     'bilibili': PlatformRooms(tag: 'bilibili', name: '哔哩'),
     'douyu': PlatformRooms(tag: 'douyu', name: '斗鱼'),
     'huya': PlatformRooms(tag: 'huya', name: '虎牙'),
   };
 
-  int get page => platformRooms[platform]?.page ?? 0;
-  set page(int _page) => platformRooms[platform]?.page = _page;
-
-  List<RoomInfo> get rooms => platformRooms[platform]?.rooms ?? [];
-  set rooms(List<RoomInfo> _rooms) => platformRooms[platform]?.rooms = _rooms;
-
-  PopularProvider(this.context) {
-    platform = Provider.of<SettingsProvider>(
-      context,
-      listen: false,
-    ).preferPlatform;
-    initRefresh();
-  }
-
   void initRefresh() async {
-    for (final p in platformRooms.keys) {
-      platformRooms[p]?.rooms = await LiveApi.getRecommend(p, page: 0);
+    for (final platform in platformRooms.keys) {
+      platformRooms[platform]?.rooms =
+          await LiveApi.getRecommend(platform, page: 0);
     }
     notifyListeners();
   }
 
-  Future<bool> onRefresh() async {
-    page = 0;
-    rooms = await LiveApi.getRecommend(platform, page: page);
+  Future<bool> onRefresh(String platform) async {
+    platformRooms[platform]?.page = 0;
+    platformRooms[platform]?.rooms = await LiveApi.getRecommend(platform,
+        page: platformRooms[platform]?.page ?? 0);
     notifyListeners();
-    return rooms.isNotEmpty;
+    return platformRooms[platform]?.rooms.isNotEmpty ?? false;
   }
 
-  Future<bool> onLoading() async {
-    page++;
-    final items = await LiveApi.getRecommend(platform, page: page);
+  Future<bool> onLoading(String platform) async {
+    platformRooms[platform]?.page++;
+    final items = await LiveApi.getRecommend(platform,
+        page: platformRooms[platform]?.page ?? 0);
     if (items.isNotEmpty) {
       for (var item in items) {
-        if (rooms.indexWhere((e) => e.roomId == item.roomId) != -1) continue;
-        rooms.add(item);
+        if (platformRooms[platform]?.rooms.contains(item) ?? true) continue;
+        platformRooms[platform]?.rooms.add(item);
       }
     }
     notifyListeners();
     return items.isNotEmpty;
-  }
-
-  void changePlatform(int index) {
-    platform = platformRooms.keys.toList()[index];
-    notifyListeners();
   }
 }

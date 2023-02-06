@@ -5,6 +5,7 @@ import 'package:battery_plus/battery_plus.dart';
 import 'package:better_player/better_player.dart';
 import 'package:bordered_text/bordered_text.dart';
 import 'package:dart_vlc/dart_vlc.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get_rx/get_rx.dart';
 import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
 import 'package:pure_live/common/index.dart';
@@ -127,6 +128,7 @@ class VideoController with ChangeNotifier {
           allowedScreenSleep: !allowScreenKeepOn,
           autoDetectFullscreenDeviceOrientation: true,
           autoDetectFullscreenAspectRatio: true,
+          errorBuilder: (context, errorMessage) => Container(),
           routePageBuilder: (context, animation, second, controllerProvider) =>
               AnimatedBuilder(
             animation: animation,
@@ -167,7 +169,6 @@ class VideoController with ChangeNotifier {
     isBuffering.value = mobileController?.isBuffering() ?? false;
     isPipMode.value =
         mobileController?.videoPlayerController?.value.isPip ?? false;
-    isFullscreen.value = mobileController?.isFullScreen ?? false;
   }
 
   void initDanmakuListener() {
@@ -236,6 +237,12 @@ class VideoController with ChangeNotifier {
 
   void setDataSource(String url) {
     datasource = url;
+    // fix datasource empty error
+    if (datasource.isEmpty) {
+      hasError.value = true;
+      return;
+    }
+
     if (Platform.isWindows || Platform.isLinux) {
       desktopController?.pause();
       desktopController?.open(
@@ -319,7 +326,15 @@ class VideoController with ChangeNotifier {
       isFullscreen.toggle();
     } else if (Platform.isAndroid || Platform.isIOS) {
       mobileController?.toggleFullScreen();
-      isFullscreen.toggle();
+      Timer(const Duration(milliseconds: 400), () {
+        isFullscreen.toggle();
+        // fix immersion status bar problem
+        if (Platform.isAndroid) {
+          SystemChrome.setEnabledSystemUIMode(!isFullscreen.value
+              ? SystemUiMode.edgeToEdge
+              : SystemUiMode.immersiveSticky);
+        }
+      });
     } else {
       throw UnimplementedError('Unsupported Platform');
     }
@@ -432,15 +447,21 @@ class MobileFullscreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      body: Container(
-        alignment: Alignment.center,
-        color: Colors.black,
-        child: Stack(
+      body: WillPopScope(
+        onWillPop: () {
+          controller.toggleFullScreen(context);
+          return Future(() => true);
+        },
+        child: Container(
           alignment: Alignment.center,
-          children: [
-            controllerProvider,
-            VideoControllerPanel(controller: controller),
-          ],
+          color: Colors.black,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              controllerProvider,
+              VideoControllerPanel(controller: controller),
+            ],
+          ),
         ),
       ),
     );

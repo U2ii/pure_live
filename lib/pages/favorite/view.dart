@@ -12,22 +12,7 @@ class FavoritePage extends StatefulWidget {
 
 class _FavoritePageState extends State<FavoritePage>
     with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  late final favorite = Provider.of<FavoriteProvider>(context);
-  late final settings = Provider.of<SettingsProvider>(context);
   late final tabController = TabController(length: 2, vsync: this);
-
-  int get crossAxisCount {
-    double screenWidth = MediaQuery.of(context).size.width;
-    int crossAxisCount = screenWidth > 1280
-        ? 4
-        : (screenWidth > 960 ? 3 : (screenWidth > 640 ? 2 : 1));
-    if (settings.enableDenseFavorites) {
-      crossAxisCount = screenWidth > 1280
-          ? 5
-          : (screenWidth > 960 ? 4 : (screenWidth > 640 ? 3 : 2));
-    }
-    return crossAxisCount;
-  }
 
   bool get showAction => MediaQuery.of(context).size.width < 640;
 
@@ -58,19 +43,9 @@ class _FavoritePageState extends State<FavoritePage>
       ),
       body: TabBarView(
         controller: tabController,
-        children: [
-          RoomGridView(
-            favorite: favorite,
-            rooms: favorite.onlineRoomList,
-            crossAxisCount: crossAxisCount,
-            online: true,
-          ),
-          RoomGridView(
-            favorite: favorite,
-            rooms: favorite.offlineRoomList,
-            crossAxisCount: crossAxisCount,
-            online: false,
-          ),
+        children: const [
+          _RoomGridView(online: true),
+          _RoomGridView(online: false),
         ],
       ),
     );
@@ -80,26 +55,46 @@ class _FavoritePageState extends State<FavoritePage>
   bool get wantKeepAlive => true;
 }
 
-class RoomGridView extends StatelessWidget {
-  final FavoriteProvider favorite;
-  final List<RoomInfo> rooms;
-  final int crossAxisCount;
+class _RoomGridView extends StatefulWidget {
   final bool online;
 
-  const RoomGridView({
+  const _RoomGridView({
     Key? key,
-    required this.favorite,
-    required this.rooms,
-    required this.crossAxisCount,
     required this.online,
   }) : super(key: key);
 
   @override
+  State<_RoomGridView> createState() => _RoomGridViewState();
+}
+
+class _RoomGridViewState extends State<_RoomGridView>
+    with AutomaticKeepAliveClientMixin {
+  late final favorite = Provider.of<FavoriteProvider>(context);
+  late final settings = Provider.of<SettingsProvider>(context);
+  final refreshController = RefreshController();
+
+  int get crossAxisCount {
+    double screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount = screenWidth > 1280
+        ? 4
+        : (screenWidth > 960 ? 3 : (screenWidth > 640 ? 2 : 1));
+    if (settings.enableDenseFavorites) {
+      crossAxisCount = screenWidth > 1280
+          ? 5
+          : (screenWidth > 960 ? 4 : (screenWidth > 640 ? 3 : 2));
+    }
+    return crossAxisCount;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsProvider>(context);
-    final refreshController = RefreshController();
+    super.build(context);
+    final rooms =
+        widget.online ? favorite.onlineRoomList : favorite.offlineRoomList;
+
     return SmartRefresher(
       enablePullDown: true,
+      physics: const BouncingScrollPhysics(),
       header: const WaterDropHeader(),
       controller: refreshController,
       onRefresh: () => favorite.onRefresh().then((value) {
@@ -119,10 +114,10 @@ class RoomGridView extends StatelessWidget {
             )
           : EmptyView(
               icon: Icons.favorite_rounded,
-              title: online
+              title: widget.online
                   ? S.of(context).empty_favorite_online_title
                   : S.of(context).empty_favorite_offline_title,
-              subtitle: online
+              subtitle: widget.online
                   ? S.of(context).empty_favorite_online_subtitle
                   : S.of(context).empty_favorite_offline_subtitle,
             ),
@@ -155,4 +150,7 @@ class RoomGridView extends StatelessWidget {
       ),
     );
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }

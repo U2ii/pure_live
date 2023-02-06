@@ -174,7 +174,7 @@ class SettingsProvider with ChangeNotifier {
 
   bool removeRoom(RoomInfo room) {
     if (!_favoriteRooms.contains(room)) return false;
-    _favoriteRooms.removeWhere((e) => e == room);
+    _favoriteRooms.remove(room);
     saveRooms();
     return true;
   }
@@ -183,6 +183,7 @@ class SettingsProvider with ChangeNotifier {
     int idx = _favoriteRooms.indexOf(room);
     if (idx == -1) return false;
     _favoriteRooms[idx] = room;
+    saveRooms();
     return true;
   }
 

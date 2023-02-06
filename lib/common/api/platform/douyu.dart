@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:developer';
+import 'package:flutter_js/flutter_js.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:http/http.dart' as http;
-import 'package:crypto/crypto.dart';
 
 class DouyuApi {
   static Future<dynamic> _getJson(String url) async {
@@ -16,50 +16,103 @@ class DouyuApi {
     return await jsonDecode(resp.body);
   }
 
+  static Future<Map?> getHomeJs(String rid) async {
+    String roomUrl = "https://www.douyu.com/" + rid;
+    String response = (await http.get(Uri.parse(roomUrl))).body;
+
+    String realRid = response.substring(
+        response.indexOf("\$ROOM.room_id =") + ("\$ROOM.room_id =").length);
+    realRid = realRid.substring(0, realRid.indexOf(";")).trim();
+    if (rid != realRid) {
+      roomUrl = "https://www.douyu.com/" + realRid;
+      response = (await http.get(Uri.parse(roomUrl))).body;
+    }
+
+    final pattern = RegExp(
+        "(vdwdae325w_64we[\\s\\S]*function ub98484234[\\s\\S]*?)function");
+    final matcher = pattern.allMatches(response);
+    if (matcher.isEmpty) return null;
+    String result = matcher.toList()[0][0]!;
+    String homejs = result.replaceAll("eval.*?;", "strc;");
+    return {
+      "homejs": homejs,
+      "real_rid": realRid,
+    };
+  }
+
+  static final jsEngine = getJavascriptRuntime();
+  static bool loadedJs = false;
+  static Future<String> getSign(String rid, String tt, String ub9) async {
+    // load crypto-js package
+    if (!loadedJs) {
+      final cryptojs = (await http.get(Uri.parse(
+              'https://cdnjs.cloudflare.com/ajax/libs/crypto-js/3.1.9-1/crypto-js.js')))
+          .body;
+      jsEngine.evaluate(cryptojs);
+      loadedJs = true;
+    }
+
+    ub9 = ub9.substring(0, ub9.lastIndexOf('function'));
+    jsEngine.evaluate(ub9);
+    final params = jsEngine
+        .evaluate(
+            'ub98484234(\'$rid\', \'10000000000000000000000000001501\', \'$tt\')')
+        .toString();
+    return params;
+  }
+
+  static Map<String, String> handleParams(String params) {
+    Map<String, String> paramsMap = {};
+    for (String param in params.split("&")) {
+      final arr1 = param.split("=");
+      final key = arr1[0].trim();
+      final value = arr1[1].trim();
+      paramsMap[key] = value;
+    }
+    return paramsMap;
+  }
+
   static Future<Map<String, Map<String, String>>> getRoomStreamLink(
       RoomInfo room) async {
     Map<String, Map<String, String>> links = {};
 
-    String url =
-        'https://playweb.douyucdn.cn/lapi/live/hlsH5Preview/${room.roomId}';
-
+    final rid = room.roomId;
     try {
-      String time = ((DateTime.now().millisecondsSinceEpoch) * 1000).toString();
-      String sign = md5.convert(utf8.encode('${room.roomId}$time')).toString();
-      Map<String, String> headers = {
-        'rid': room.roomId,
-        'time': time,
-        'auth': sign
-      };
-      Map data = {
-        'rid': room.roomId,
-        'did': '10000000000000000000000000001501'
-      };
-      var resp = await http.post(Uri.parse(url), headers: headers, body: data);
-      var body = json.decode(resp.body);
-      if (body['error'] == 0) {
-        String rtmpLive = body['data']['rtmp_live'];
-        RegExpMatch? match =
-            RegExp(r'(\d{1,8}[0-9a-zA-Z]+)_?\d{0,4}(/playlist|.m3u8)')
-                .firstMatch(rtmpLive);
-        String? key = match?.group(1);
+      // 获取房间主页JS
+      final result = await getHomeJs(rid);
+      final realRid = result!["real_rid"];
+      final homejs = result["homejs"];
+      // 执行JS获取签名信息
+      final tt = (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString();
+      final params = (await getSign(rid, tt, homejs)) + "&cdn=ws-h5&rate=0";
 
-        // add stream links
-        Map<String, String> resolutions = {
-          '原画': '',
-          '蓝光8M': '_2000',
-          '蓝光4M': '_1500',
-          '超清': '_1200',
-          '流畅': '_900',
-        };
-        List<String> cdns = ['hw', 'ws', 'akm'];
-        for (String res in resolutions.keys) {
-          String v = resolutions[res]!;
-          links[res] = {};
-          for (String cdn in cdns) {
-            links[res]![cdn] =
-                'https://$cdn-tct.douyucdn.cn/live/$key$v.flv?uuid=';
-          }
+      // 发送请求获取直播流信息
+      String requestUrl =
+          "https://www.douyu.com/lapi/live/getH5Play/" + realRid;
+      final response1 = await http.post(
+        Uri.parse(requestUrl),
+        body: handleParams(params),
+      );
+      final response = jsonDecode(response1.body);
+      final data = response["data"];
+
+      // 获取真实直播Key
+      final url = data["rtmp_live"];
+      final key = url.substring(0, url.indexOf(".")).split("_")[0];
+
+      // 获取支持分辨率
+      Map<String, String> resolutions = {};
+      data["multirates"].forEach((e) {
+        resolutions[e['name']] = e['rate'] == 0 ? '' : '_${e['bit']}';
+      });
+
+      List<String> cdns = ['akm', 'hw', 'ws'];
+      for (String res in resolutions.keys) {
+        String v = resolutions[res]!;
+        links[res] = {};
+        for (String cdn in cdns) {
+          links[res]![cdn] =
+              'https://$cdn-tct.douyucdn.cn/live/$key$v.flv?uuid=';
         }
       }
     } catch (e) {
@@ -85,19 +138,6 @@ class DouyuApi {
             (data.containsKey('room_status') && data['room_status'] == '1')
                 ? LiveStatus.live
                 : LiveStatus.offline;
-      }
-      // fix douyu replay status
-      try {
-        dynamic body = await _getJson(
-            'https://www.douyu.com/wgapi/live/liveweb/getRoomLoopInfo?rid=${room.roomId}');
-        if (body['error'] == 0) {
-          Map data = body['data'];
-          if (data.containsKey('rst') && data['rst'] == 3) {
-            room.liveStatus = LiveStatus.replay;
-          }
-        }
-      } catch (e) {
-        log(e.toString(), name: 'DouyuApi.getRoomInfo.rstinfo');
       }
     } catch (e) {
       log(e.toString(), name: 'DouyuApi.getRoomInfo');

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:date_format/date_format.dart' hide S;
 import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:pure_live/common/index.dart';
 
 class BackupPage extends StatefulWidget {
@@ -44,7 +45,23 @@ class _BackupPageState extends State<BackupPage> {
     );
   }
 
+  Future<bool> requestStoragePermission() async {
+    if (await Permission.manageExternalStorage.isDenied) {
+      final status = Permission.manageExternalStorage.request();
+      return status.isGranted;
+    }
+    return true;
+  }
+
   void createBackup() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      final granted = await requestStoragePermission();
+      if (!granted) {
+        SnackBarUtil.error(context, '请先授予读写文件权限');
+        return;
+      }
+    }
+
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory == null) return;
 

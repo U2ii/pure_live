@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:pure_live/common/index.dart';
 import 'package:pure_live/pages/index.dart';
@@ -41,19 +44,26 @@ class _LivePlayPageState extends State<LivePlayPage> {
     LiveApi.getRoomStreamLink(widget.room).then((value) {
       _streamList = value;
       setPreferResolution();
-      controller = VideoController(
-        playerKey: _playerKey,
-        room: widget.room,
-        danmakuStream: danmakuStream,
-        datasourceType: 'network',
-        datasource: _datasource,
-        allowBackgroundPlay: settings.enableBackgroundPlay,
-        allowScreenKeepOn: settings.enableScreenKeepOn,
-        fullScreenByDefault: settings.enableFullScreenDefault,
-        autoPlay: true,
-      );
-      setState(() {});
+
+      // add delay to avoid hero animation lag
+      int delay = (Platform.isWindows || Platform.isLinux) ? 500 : 0;
+      Timer(Duration(milliseconds: delay), initController);
     });
+  }
+
+  void initController() {
+    controller = VideoController(
+      playerKey: _playerKey,
+      room: widget.room,
+      danmakuStream: danmakuStream,
+      datasourceType: 'network',
+      datasource: _datasource,
+      allowBackgroundPlay: settings.enableBackgroundPlay,
+      allowScreenKeepOn: settings.enableScreenKeepOn,
+      fullScreenByDefault: settings.enableFullScreenDefault,
+      autoPlay: true,
+    );
+    setState(() {});
   }
 
   @override
@@ -71,6 +81,16 @@ class _LivePlayPageState extends State<LivePlayPage> {
         _selectedResolution = key;
         _datasource = _streamList[key]!.values.first;
         return;
+      }
+    }
+    // 原画选择缺陷
+    if (widget.preferResolution == '原画') {
+      for (var key in _streamList.keys) {
+        if (key.contains('原画')) {
+          _selectedResolution = key;
+          _datasource = _streamList[key]!.values.first;
+          return;
+        }
       }
     }
     // 蓝光8M/4M选择缺陷

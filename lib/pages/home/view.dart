@@ -40,6 +40,16 @@ class _HomePageRouterState extends State<HomePageRouter>
     // check update overlay ui
     WidgetsBinding.instance.addPostFrameCallback(
       (timeStamp) async {
+        // Android statusbar and navigationbar
+        if (Platform.isAndroid) {
+          SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor:
+                Theme.of(context).navigationBarTheme.backgroundColor,
+          ));
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        }
+
         await VersionUtil.checkUpdate();
         if (Provider.of<SettingsProvider>(context, listen: false)
                 .enableAutoCheckUpdate &&
@@ -77,16 +87,6 @@ class _HomePageRouterState extends State<HomePageRouter>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    // Android statusbar and navigationbar
-    if (Platform.isAndroid) {
-      SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor:
-            Theme.of(context).navigationBarTheme.backgroundColor,
-      ));
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
-
     return ScreenTypeLayout.builder(
       mobile: (context) => homeMobile,
       tablet: (context) => homeTablet,
